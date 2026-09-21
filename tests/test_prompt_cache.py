@@ -8,6 +8,13 @@ keeps one oversized result from inflating the rest of a session.
 50,325 bytes before this work; 21,438 after consolidating the tool surface.
 Bump MAX_WIRE_BYTES deliberately — the slack is there to absorb a schema change,
 not a new tool.
+
+Raised to 23,500 for the three capture-upload tools (~1,214 bytes). That was a
+deliberate call, not slack being consumed: without them a server that does not
+share the caller's filesystem cannot be given a capture at all, and the
+alternative — registering them only when uploads are configured — would make the
+payload depend on deployment config and defeat the byte-stability this file pins.
+Their descriptions carry the chunking protocol, which is why they are not shorter.
 """
 
 import asyncio
@@ -21,7 +28,7 @@ from wireshark_mcp.mcp_app import WiresharkMCP, cap_result_text
 from wireshark_mcp.server import _build_server
 from wireshark_mcp.tool_annotations import OUTPUT_PATH_PARAMS, WRITE_TOOLS
 
-MAX_WIRE_BYTES = 22_500
+MAX_WIRE_BYTES = 23_500
 REPO_ROOT = Path(__file__).parent.parent
 
 

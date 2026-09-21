@@ -11,6 +11,7 @@
 | 自动安装或排查安装问题 | 先按主 [README](../README_zh.md) 运行 `wireshark-mcp install` 和 `wireshark-mcp doctor` |
 | 手动配置 MCP 客户端 | [手动配置](manual-configuration_zh.md) |
 | 本机、SSH、WSL 或容器部署 | [部署场景](deployment-scenarios_zh.md) |
+| 在不共享文件系统的服务端上分析抓包 | [抓包上传](capture-upload_zh.md) |
 | 将 2.x 部署安全迁移到 3.0 | [3.0 安全迁移](security-hardening-v3_zh.md) |
 | 写出更可靠的流量分析任务 | [提示词示例](prompt-engineering_zh.md) |
 | 计算全量计数与分布 | [聚合指南](aggregation_zh.md) |

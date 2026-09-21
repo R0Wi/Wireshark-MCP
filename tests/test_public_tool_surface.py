@@ -95,7 +95,10 @@ def test_full_server_exposes_a_stable_tool_surface(monkeypatch) -> None:
     # list costs prefix bytes on every request and, more importantly, competes for the
     # model's attention at selection time. Lower this as tools are removed; raising it
     # should require justifying why a new tool is not reachable through an existing one.
-    assert len(names) <= 52, f"tool surface grew to {len(names)}; justify or consolidate"
+    # Raised from 52 for the three capture-upload tools. The justification this
+    # comment asks for: they are not reachable through an existing tool, because
+    # every other tool takes a path on a filesystem the caller may not share.
+    assert len(names) <= 55, f"tool surface grew to {len(names)}; justify or consolidate"
 
 
 def test_every_protocol_recommendation_is_registered() -> None:

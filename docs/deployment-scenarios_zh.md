@@ -65,6 +65,27 @@ docker run --rm -p 127.0.0.1:8080:8080 \
 读取路径也会受同一组根目录约束。依赖导出、抓包、合并或编辑文件的自动化在升级前，
 请阅读 [3.0 安全迁移指南](security-hardening-v3_zh.md)。
 
+## 分布式：位于 MCP 网关之后
+
+当服务端运行在客户端看不到的地方——另一台主机、集群，或没有共享卷的容器——
+就没有路径可以交给分析工具。此时启用抓包上传，让客户端通过 MCP 发送字节，
+并用句柄分析结果：
+
+```sh
+export WIRESHARK_MCP_ALLOWED_DIRS=/srv/pcaps
+export WIRESHARK_MCP_UPLOAD_DIR=/run/wireshark-uploads
+wireshark-mcp serve --transport streamable-http --host 0.0.0.0 \
+  --port 8080 --allow-insecure-http --profile analysis
+```
+
+只有当监听端口仅能通过终止 TLS 并认证客户端的网关或反向代理访问时，
+`--allow-insecure-http` 才是安全的。上传句柄只授权访问某一个抓包，
+不能替代该网关。
+
+遵循 MCP 授权规范的网关不会把客户端令牌转发给上游，因此本服务端无法区分它的各个用户。
+请按信任域各部署一个实例，而不是多租户共用。完整模型、限制与容器示例参见
+[抓包上传](capture-upload_zh.md)。
+
 ## WSL
 
 在同一个 WSL 发行版中安装 Wireshark CLI 和 `wireshark-mcp`，配置使用 Linux

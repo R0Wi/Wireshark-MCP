@@ -16,6 +16,8 @@ MCP 客户端
 
 `src/wireshark_mcp/server.py` 创建一个服务和一个套件客户端，再注册工具、prompts 与 resources。会话中的公开工具列表保持静态。`wireshark_open_file` 读取协议层次并推荐已经注册的工具，不会在运行时修改工具目录。
 
+`WiresharkMCP.call_tool` 会在分发请求之前，把参数中的 `upload://` 句柄解析为存储路径。正是这个统一收口点，使整个工具面无需修改签名即可接受上传的抓包，后续新增的工具也自动继承该行为。输出参数被刻意排除在解析之外，因此句柄无法被用来覆盖已存储的上传。
+
 ## MCP SDK 兼容性
 
 服务端使用稳定版 Python SDK 2.x（`mcp>=2.1.1,<3`），并继承 `MCPServer`。按照 v2 的要求，HTTP 监听参数在传输启动时传入；旧有 `--mount-path` CLI 参数会转换为明确的 SSE 与消息端点路径。协议模型在 Python 中使用 snake_case 属性，在线路 JSON 中仍使用 camelCase 别名。内存客户端测试会完成一次完整的 v2 协议协商，核对服务版本，并通过协议接口读取公开工具列表，不再依赖私有 manager。
@@ -25,10 +27,11 @@ MCP 客户端
 | 区域 | 位置 | 职责 |
 |------|------|------|
 | 服务与 CLI | `server.py` | 子命令、传输方式、profile、注册顺序 |
-| MCP 行为 | `mcp_app.py` | schema 精简、annotations、工具排除、结果字符上限 |
+| MCP 行为 | `mcp_app.py` | schema 精简、annotations、工具排除、结果字符上限、`upload://` 句柄解析 |
 | Profile | `profiles.py` | `full`、`analysis`、`core` 的明确排除列表 |
 | 工具标注 | `tool_annotations.py` | 只读、破坏性、开放世界提示 |
 | 领域工具 | `tools/` | 数据包、协议、统计、安全、文件与工作流语义 |
+| 抓包上传 | `uploads.py` | 通过 MCP 上传的抓包的能力凭证式存储 |
 | 套件客户端 | `tshark/` | 路径校验、子进程、提取、抓包、统计、缓存 |
 | 安装器 | `installer/` | 客户端识别、配置生成、原子写入、诊断 |
 | Prompts 与 resources | `prompts.py`、`resources.py` | 内置工作流和字段、过滤器参考 |
@@ -61,6 +64,7 @@ MCP 边界还会按 `WIRESHARK_MCP_MAX_RESULT_CHARS` 限制长文本，默认 80
 
 - 抓包路径与输出路径由套件客户端统一校验。
 - `WIRESHARK_MCP_ALLOWED_DIRS` 把读写范围限制在指定根目录内；未配置时写入默认失败关闭。
+- 抓包上传在未配置上传目录前失败关闭。`upload://` 句柄是带 TTL 的 128 位随机能力凭证，而不是按用户的授权：符合规范的 MCP 网关不会向上游转发调用方身份，服务端也就没有可绑定的身份。请按信任域各部署一个实例。参见[抓包上传](capture-upload_zh.md)。
 - 创建文件的工具明确标为 destructive，客户端可以要求确认。
 - 实时抓包标为 open-world，并依赖主机抓包权限。
 - Streamable HTTP 与 SSE 本身不提供认证。监听非回环地址时必须显式使用 `--allow-insecure-http`，并置于可信的 TLS 认证反向代理后。

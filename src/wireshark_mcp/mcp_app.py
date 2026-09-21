@@ -18,6 +18,12 @@ rest of the session. Two things therefore matter more than they look:
 
 Both fixes are applied at single choke points so they cannot drift as tools are
 added: ``add_tool`` for the schema, ``call_tool`` for the result ceiling.
+
+``call_tool`` carries a third responsibility for the same reason: an
+``upload://`` handle in any argument is resolved to the stored path *before*
+dispatch. Doing it here rather than in each tool is what lets the whole existing
+surface accept an uploaded capture without a single signature changing, and
+means a tool added later inherits the behavior instead of having to remember it.
 """
 
 from __future__ import annotations
@@ -30,8 +36,9 @@ from typing import TYPE_CHECKING, Any
 from mcp.server import MCPServer
 from mcp.types import CallToolResult, InputRequiredResult, TextContent
 
-from .tool_annotations import annotations_for
+from .tool_annotations import OUTPUT_PATH_PARAMS, annotations_for
 from .tools.formatting import smart_truncate
+from .uploads import UPLOAD_SCHEME, UploadError, UploadStore
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,6 +47,11 @@ if TYPE_CHECKING:
     from mcp.types import Icon, ToolAnnotations
 
 logger = logging.getLogger("wireshark_mcp")
+
+# Tools whose own arguments name an upload record rather than a capture to read.
+_UPLOAD_TOOL_NAMES: frozenset[str] = frozenset(
+    {"wireshark_upload_capture", "wireshark_list_uploads", "wireshark_delete_upload"}
+)
 
 MAX_RESULT_CHARS_ENV = "WIRESHARK_MCP_MAX_RESULT_CHARS"
 # 2x the smart_truncate default, so output that already bounds itself is untouched.
@@ -327,6 +339,7 @@ class WiresharkMCP(MCPServer):
         *args: Any,
         max_result_chars: int | None = None,
         excluded_tools: frozenset[str] | None = None,
+        upload_store: UploadStore | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -334,6 +347,12 @@ class WiresharkMCP(MCPServer):
         # Filtering here rather than at each call site means a profile cannot be
         # bypassed by a registration path that forgets to check it.
         self._excluded_tools = excluded_tools or frozenset()
+        self._upload_store = upload_store
+
+    @property
+    def upload_store(self) -> UploadStore | None:
+        """The store backing ``upload://`` handle resolution, if any."""
+        return self._upload_store
 
     @property
     def max_result_chars(self) -> int:
@@ -391,12 +410,43 @@ class WiresharkMCP(MCPServer):
             # Resolved name, not fn.__name__ — the two differ for registry-renamed tools.
             tool.annotations = annotations_for(tool.name)
 
+    def _resolve_upload_handles(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Swap ``upload://`` handles in the arguments for real paths.
+
+        Output parameters are skipped on purpose. Resolving one would let a
+        caller aim a writing tool at a stored upload and overwrite it — still
+        inside the sandbox, but not something a handle should be able to express.
+
+        The upload tools themselves are skipped too: their ``upload_handle``
+        argument names a record to append to or delete, and the store resolves
+        it. Substituting a path there would defeat that.
+        """
+        store = self._upload_store
+        if store is None or name in _UPLOAD_TOOL_NAMES:
+            return arguments
+
+        resolved: dict[str, Any] = {}
+        for key, value in arguments.items():
+            if key not in OUTPUT_PATH_PARAMS and isinstance(value, str) and UPLOAD_SCHEME in value:
+                resolved[key] = store.expand(value)
+            else:
+                resolved[key] = value
+        return resolved
+
     async def call_tool(
         self,
         name: str,
         arguments: dict[str, Any],
         context: Context[Any, Any] | None = None,
     ) -> CallToolResult | InputRequiredResult:
+        try:
+            arguments = self._resolve_upload_handles(name, arguments)
+        except UploadError as exc:
+            # Report in the same envelope shape every tool uses, so a bad handle
+            # reads like any other tool failure rather than a transport error.
+            payload = json.dumps({"success": False, "error": {"type": exc.error_type, "message": exc.message}})
+            return CallToolResult(content=[TextContent(type="text", text=payload)], is_error=True)
+
         result = await super().call_tool(name, arguments, context)
         if isinstance(result, CallToolResult):
             # Check is_error on original content BEFORE capping

@@ -67,6 +67,31 @@ directories. The same roots constrain reads once configured. See the
 [3.0 security migration guide](security-hardening-v3.md) before upgrading an
 automation that exports, captures, merges, or edits files.
 
+## Distributed: behind an MCP gateway
+
+When the server runs somewhere the client cannot see — a different host, a
+cluster, a container with no shared volume — there is no path to hand the
+analysis tools. Enable capture upload so the client can send the bytes over MCP
+and analyze the result by handle:
+
+```sh
+export WIRESHARK_MCP_ALLOWED_DIRS=/srv/pcaps
+export WIRESHARK_MCP_UPLOAD_DIR=/run/wireshark-uploads
+wireshark-mcp serve --transport streamable-http --host 0.0.0.0 \
+  --port 8080 --allow-insecure-http --profile analysis
+```
+
+`--allow-insecure-http` is only safe when the listener is reachable exclusively
+through a gateway or reverse proxy that terminates TLS and authenticates
+clients. The upload handle authorizes access to one capture; it is not a
+substitute for that gateway.
+
+A gateway that follows the MCP authorization spec does not forward the client's
+token upstream, so this server cannot distinguish one of its users from another.
+Run one instance per trust domain rather than sharing one between tenants. See
+[Capture upload](capture-upload.md) for the full model, limits, and container
+example.
+
 ## WSL
 
 Install Wireshark CLI tools and `wireshark-mcp` inside the same distribution.

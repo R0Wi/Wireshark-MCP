@@ -19,7 +19,6 @@ import pytest
 
 from wireshark_mcp.profiles import PROFILE_NAMES
 from wireshark_mcp.server import _build_server
-from wireshark_mcp.tool_annotations import WRITE_TOOLS
 
 REPO_ROOT = Path(__file__).parent.parent
 
@@ -45,7 +44,7 @@ SPECS = [
         path="README_zh.md",
         table_header="| 类别 |",
         headline=r"(\d+)\s*个工具，每个都由真实",
-        read_write=r"自动放行\s*(\d+)\s*个只读分析工具.*?会创建文件的\s*(\d+)\s*个工具",
+        read_write=r"自动放行\s*(\d+)\s*个只读分析工具.*?会创建文件或删除服务端状态的\s*(\d+)\s*个工具",
     ),
 ]
 IDS = [s.path for s in SPECS]
@@ -104,10 +103,16 @@ def test_profile_table_matches_the_real_profiles(spec: ReadmeSpec) -> None:
 
 @pytest.mark.parametrize("spec", SPECS, ids=IDS)
 def test_read_write_split_is_accurate(spec: ReadmeSpec) -> None:
+    """The split is counted from the annotations, which is what the sentence claims.
+
+    Deriving it from WRITE_TOOLS instead would miss a tool that is not read-only
+    for a reason other than creating a file — `wireshark_delete_upload` removes
+    server-side state — and the README would understate what a client prompts for.
+    """
     mcp = _build_server(host="127.0.0.1", port=8080, log_level="ERROR")
-    names = {t.name for t in asyncio.run(mcp.list_tools())}
-    writers = len(names & set(WRITE_TOOLS))
-    readers = len(names) - writers
+    tools = asyncio.run(mcp.list_tools())
+    readers = sum(1 for t in tools if t.annotations and t.annotations.read_only_hint)
+    writers = len(tools) - readers
 
     match = re.search(spec.read_write, _text(spec), re.S)
     assert match, f"{spec.path}: could not find the read/write split sentence"

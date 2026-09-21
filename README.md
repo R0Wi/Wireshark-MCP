@@ -79,11 +79,13 @@ Use wireshark_aggregate for any capture-wide count or distribution.
 Write findings to report.md.
 ```
 
+**No shared filesystem?** If the server runs somewhere your client cannot see, upload the capture over MCP instead of naming a path — `wireshark_upload_capture` returns an `upload://` handle that every tool accepts in place of `pcap_file`. See [docs/capture-upload.md](docs/capture-upload.md).
+
 ---
 
 ## Tools
 
-52 tools, each backed by real `tshark` output — organized into categories:
+55 tools, each backed by real `tshark` output — organized into categories:
 
 | Category | Highlights | Count |
 |----------|-----------|:-----:|
@@ -96,6 +98,7 @@ Write findings to report.md.
 | **Decrypt & Dissection** | TLS/WPA decrypt, decryption check, decode-as, protocol preferences | 5 |
 | **Forensics & Enrichment** | TLS fingerprints, file signature scan, GeoIP | 3 |
 | **File Ops, Capture & Suite** | Live capture, interfaces, merge, filter-save, editcap trim/split/dedup/time-shift, frame extract, text2pcap, capabilities | 11 |
+| **Capture Upload** | Upload a capture over MCP, list and delete uploads | 3 |
 
 One tool covers 20 protocols rather than 20 tools covering one each: `wireshark_analyze_protocol` takes a `protocol` argument (`tls_handshakes`, `mqtt`, `modbus`, `s7comm`, `zigbee`, `wifi`, `rtp`, `kerberos`, …) and applies the right fields and display filter for it. The field names are the point — `s7comm.param.item.dbnum` is not something a caller should have to guess, and a wrong guess returns an empty result that reads like a clean capture.
 
@@ -109,9 +112,9 @@ If your client never captures live traffic or writes pcaps, `--profile` advertis
 
 | Profile | Tools | Payload | Drops |
 |---------|:-----:|:-------:|-------|
-| `full` (default) | 52 | ~22 KB | nothing |
-| `analysis` | 40 | ~17 KB | live capture, interface listing, all file-writing tools |
-| `core` | 32 | ~14 KB | the above, plus decryption, dissection overrides, and low-level views |
+| `full` (default) | 55 | ~23 KB | nothing |
+| `analysis` | 43 | ~18 KB | live capture, interface listing, all file-writing tools |
+| `core` | 35 | ~15 KB | the above, plus decryption, dissection overrides, and low-level views |
 
 ```bash
 wireshark-mcp serve --profile core
@@ -125,9 +128,9 @@ Tool results are bounded too, since a result stays in the conversation for the r
 export WIRESHARK_MCP_MAX_RESULT_CHARS=16000
 ```
 
-Every tool also declares whether it reads or writes, so clients can auto-approve the 41 read-only analysis tools and still prompt for the 11 that create files (live capture, merge, filter-save, editcap, text2pcap, frame extract, object export).
+Every tool also declares whether it reads or writes, so clients can auto-approve the 42 read-only analysis tools and still prompt for the 13 that create files or remove server-side state (live capture, merge, filter-save, editcap, text2pcap, frame extract, object export, capture upload and delete).
 
-In 3.0, those 11 tools fail closed until `WIRESHARK_MCP_ALLOWED_DIRS` names existing directories. Remote HTTP/SSE binding also stays loopback-only unless `--allow-insecure-http` is explicitly supplied behind a trusted authenticated TLS proxy. See the [3.0 security migration guide](docs/security-hardening-v3.md).
+In 3.0, the file-creating tools fail closed until `WIRESHARK_MCP_ALLOWED_DIRS` names existing directories, and the upload tools until an upload directory is configured. Remote HTTP/SSE binding also stays loopback-only unless `--allow-insecure-http` is explicitly supplied behind a trusted authenticated TLS proxy. See the [3.0 security migration guide](docs/security-hardening-v3.md).
 
 ---
 
@@ -140,6 +143,7 @@ In 3.0, those 11 tools fail closed until `WIRESHARK_MCP_ALLOWED_DIRS` names exis
 | Platform setup (macOS/Linux/Windows) | [docs/platform-validation.md](docs/platform-validation.md) |
 | Manual client configuration | [docs/manual-configuration.md](docs/manual-configuration.md) |
 | Deployment scenarios | [docs/deployment-scenarios.md](docs/deployment-scenarios.md) |
+| Capture upload (distributed servers) | [docs/capture-upload.md](docs/capture-upload.md) |
 | 3.0 security migration | [docs/security-hardening-v3.md](docs/security-hardening-v3.md) |
 | Prompt templates | [docs/prompt-engineering.md](docs/prompt-engineering.md) |
 | Architecture | [docs/architecture.md](docs/architecture.md) |
