@@ -4,11 +4,15 @@ Three tools, not six: every entry in ``tools/list`` is re-sent on each request, 
 the budget test in ``tests/test_prompt_cache.py`` holds the whole surface to a
 fixed byte ceiling. Chunking is therefore folded into the upload tool as two
 optional arguments rather than split across begin/append/finalize tools.
+
+Store calls run on a worker thread: they do synchronous file I/O, and a tool
+call must not stall every other request on the event loop while it writes.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Any
 
 from ..uploads import UploadError
 from .envelope import envelope_response, error_response, parse_tool_result
@@ -42,6 +46,19 @@ async def _capture_is_readable(client: TSharkClient, path: str) -> tuple[bool, s
     return False, str(error.get("message") or "capinfos could not read the capture")
 
 
+async def verify_readable(client: TSharkClient, store: UploadStore, record: dict[str, Any]) -> None:
+    """Probe a finalized upload with `capinfos`, discarding it if unreadable.
+
+    Shared by the upload tool and the HTTP upload route so both reject the same
+    captures the same way. Raises ``UploadError`` (HTTP 422) on rejection.
+    """
+    path = await asyncio.to_thread(store.resolve, record["handle"])
+    readable, reason = await _capture_is_readable(client, str(path))
+    if not readable:
+        await asyncio.to_thread(store.discard, record["handle"])
+        raise UploadError(f"Upload rejected: the capture could not be read back. {reason}", status=422)
+
+
 def register_upload_tools(mcp: MCPServer, client: TSharkClient, store: UploadStore) -> None:
     """Register the capture upload tools.
 
@@ -59,42 +76,28 @@ def register_upload_tools(mcp: MCPServer, client: TSharkClient, store: UploadSto
     ) -> str:
         """Upload a pcap/pcapng as base64; returns an upload:// handle any pcap_file argument accepts. Large capture: send parts with more_chunks=true, passing back the handle, then a last part with more_chunks=false."""
         try:
-            record = store.write(
+            record = await asyncio.to_thread(
+                store.write,
                 content_base64,
                 filename=filename,
                 handle=upload_handle,
                 more_chunks=more_chunks,
             )
+            if not record["complete"]:
+                return envelope_response(
+                    record,
+                    warnings=["Upload is incomplete. Send the remaining parts with upload_handle set."],
+                )
+            await verify_readable(client, store, record)
         except UploadError as exc:
             return _failure(exc)
-
-        if not record["complete"]:
-            return envelope_response(
-                record,
-                warnings=["Upload is incomplete. Send the remaining parts with upload_handle set."],
-            )
-
-        # Only a finalized record has a path worth probing.
-        try:
-            path = str(store.resolve(record["handle"]))
-        except UploadError as exc:
-            return _failure(exc)
-
-        readable, reason = await _capture_is_readable(client, path)
-        if not readable:
-            store.discard(record["handle"])
-            return error_response(
-                f"Upload rejected: the capture could not be read back. {reason}",
-                "InvalidParameter",
-            )
-
         return envelope_response(record)
 
     @mcp.tool()
     async def wireshark_list_uploads() -> str:
         """List captures held by this server with their upload:// handles and remaining lifetime."""
         try:
-            records = store.list_uploads()
+            records = await asyncio.to_thread(store.list_uploads)
         except UploadError as exc:
             return _failure(exc)
         return envelope_response({"uploads": records, "count": len(records)})
@@ -103,7 +106,7 @@ def register_upload_tools(mcp: MCPServer, client: TSharkClient, store: UploadSto
     async def wireshark_delete_upload(upload_handle: str) -> str:
         """Delete an uploaded capture now instead of waiting for it to expire."""
         try:
-            existed = store.delete(upload_handle)
+            existed = await asyncio.to_thread(store.delete, upload_handle)
         except UploadError as exc:
             return _failure(exc)
         if not existed:

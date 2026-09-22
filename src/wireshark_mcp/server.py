@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 from . import __version__
+from .http_uploads import register_upload_routes
 from .mcp_app import WiresharkMCP
 from .profiles import DEFAULT_PROFILE, PROFILE_NAMES, excluded_tools, profile_description
 from .prompts import register_prompts
@@ -96,6 +97,7 @@ def _build_server(*, host: str, port: int, log_level: LogLevelName, profile: str
     register_agent_tools(mcp, client)
     register_advanced_tools(mcp, client)
     register_upload_tools(mcp, client, upload_store)
+    register_upload_routes(mcp, client, upload_store)
 
     # ── Analysis tools + protocol-aware recommendations ────────────────
     # Register the full analysis tool catalog once — the tool surface is static.

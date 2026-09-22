@@ -45,7 +45,7 @@ wireshark-mcp serve --transport streamable-http --host 0.0.0.0 \
 - 环形缓冲必须同时设置 `filesize` 和 `files`，乘积不能超过 100 MiB。
 - Wireshark 版本探测五秒超时。
 - WPA 口令和 TLS key-log 路径不会出现在命令诊断中。
-- 抓包上传在配置上传目录前处于关闭状态；启用后单个抓包上限 100 MiB，一小时后清理。
+- 抓包上传在配置上传目录前处于关闭状态；启用后单个抓包上限 100 MiB、总量上限 1 GiB，一小时后清理。
   参见[抓包上传](capture-upload_zh.md)。
 
 这些是服务端安全上限，MCP 工具参数不能提高。达到上限时请收窄显示过滤器，或按合理

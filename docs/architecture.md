@@ -31,7 +31,7 @@ The server targets the stable Python SDK 2.x line (`mcp>=2.1.1,<3`) and subclass
 | Profiles | `profiles.py` | Literal tool exclusions for `full`, `analysis`, and `core` |
 | Tool annotations | `tool_annotations.py` | Read-only, destructive, and open-world hints |
 | Domain tools | `tools/` | Packet, protocol, statistics, security, file, and workflow semantics |
-| Capture uploads | `uploads.py` | Capability-addressed store for captures sent over MCP |
+| Capture uploads | `uploads.py`, `http_uploads.py` | Capability-addressed store for captures sent over MCP or `POST /uploads`, with a directory quota |
 | Suite client | `tshark/` | Path validation, subprocess execution, extraction, capture, statistics, cache |
 | Installer | `installer/` | Client detection, config generation, atomic config writes, diagnostics |
 | Prompts/resources | `prompts.py`, `resources.py` | Built-in workflows and field/filter references |

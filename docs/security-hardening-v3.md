@@ -52,7 +52,7 @@ Do not publish that listener directly to an untrusted network.
 - Wireshark version probes time out after five seconds.
 - WPA passphrases and TLS key-log paths are redacted from command diagnostics.
 - Capture uploads are disabled until an upload directory is configured, then capped
-  at 100 MiB per capture and swept after one hour. See
+  at 100 MiB per capture and 1 GiB in total, and swept after one hour. See
   [Capture upload](capture-upload.md).
 
 These are server-side safety limits and cannot be raised by an MCP tool argument.

@@ -31,7 +31,7 @@ MCP 客户端
 | Profile | `profiles.py` | `full`、`analysis`、`core` 的明确排除列表 |
 | 工具标注 | `tool_annotations.py` | 只读、破坏性、开放世界提示 |
 | 领域工具 | `tools/` | 数据包、协议、统计、安全、文件与工作流语义 |
-| 抓包上传 | `uploads.py` | 通过 MCP 上传的抓包的能力凭证式存储 |
+| 抓包上传 | `uploads.py`、`http_uploads.py` | 通过 MCP 或 `POST /uploads` 上传的抓包的能力凭证式存储，带目录配额 |
 | 套件客户端 | `tshark/` | 路径校验、子进程、提取、抓包、统计、缓存 |
 | 安装器 | `installer/` | 客户端识别、配置生成、原子写入、诊断 |
 | Prompts 与 resources | `prompts.py`、`resources.py` | 内置工作流和字段、过滤器参考 |

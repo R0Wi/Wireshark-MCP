@@ -86,6 +86,10 @@ wireshark-mcp serve --transport streamable-http --host 0.0.0.0 \
 请按信任域各部署一个实例，而不是多租户共用。完整模型、限制与容器示例参见
 [抓包上传](capture-upload_zh.md)。
 
+超过几百 KB 的抓包，请把字节发送到 `POST /uploads`，而不是使用 base64 工具。在网关之后，
+该路由经由网关的 HTTP 透传访问，并使用网关为 Agent 签发的短时上传 URL——参见
+[通过 HTTP 上传大抓包](capture-upload_zh.md#通过-http-上传大抓包)。
+
 ## WSL
 
 在同一个 WSL 发行版中安装 Wireshark CLI 和 `wireshark-mcp`，配置使用 Linux

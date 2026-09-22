@@ -556,3 +556,82 @@ def test_the_upload_tool_name_list_cannot_drift(mock_client: MockTSharkClient) -
     registered = {t.name for t in _run(mcp.list_tools())}
 
     assert registered == _UPLOAD_TOOL_NAMES
+
+
+# ── Total quota ─────────────────────────────────────────────────────────
+
+
+def test_quota_rejects_an_upload_that_would_exceed_the_total(tmp_path: Path) -> None:
+    store = UploadStore(tmp_path, max_bytes=4096, ttl_seconds=3600, max_total_bytes=4096)
+    store.write(_b64(PCAP_HEADER + b"\x00" * 3000))
+
+    with pytest.raises(UploadError, match="storage is full") as info:
+        store.write(_b64(PCAP_HEADER + b"\x00" * 3000))
+
+    assert info.value.error_type == "QuotaExceeded"
+    assert len(store.list_uploads()) == 1
+
+
+def test_quota_counts_partial_uploads(tmp_path: Path) -> None:
+    """An open chunked transfer holds its bytes; it cannot be used to dodge the total."""
+    store = UploadStore(tmp_path, max_bytes=4096, ttl_seconds=3600, max_total_bytes=4096)
+    store.write(_b64(PCAP_HEADER + b"\x00" * 3000), more_chunks=True)
+
+    with pytest.raises(UploadError, match="storage is full"):
+        store.write(_b64(PCAP_HEADER + b"\x00" * 3000))
+
+
+def test_a_quota_refusal_mid_chunking_keeps_the_partial_for_a_retry(tmp_path: Path) -> None:
+    store = UploadStore(tmp_path, max_bytes=4096, ttl_seconds=3600, max_total_bytes=4096)
+    pending = store.write(_b64(PCAP_HEADER), more_chunks=True)
+    other = store.write(_b64(PCAP_HEADER + b"\x00" * 3000))
+
+    # 20 (pending) + 3020 (other) + 1100 = 4140 > 4096.
+    with pytest.raises(UploadError, match="storage is full"):
+        store.write(_b64(b"\x00" * 1100), handle=pending["handle"])
+
+    store.delete(other["handle"])
+    final = store.write(_b64(b"\x00" * 1100), handle=pending["handle"])
+    assert final["complete"] is True
+    assert final["size"] == len(PCAP_HEADER) + 1100
+
+
+def test_expired_uploads_free_quota(tmp_path: Path) -> None:
+    store = UploadStore(tmp_path, max_bytes=4096, ttl_seconds=1, max_total_bytes=4096)
+    store.write(_b64(PCAP_HEADER + b"\x00" * 3000))
+
+    time.sleep(1.1)
+
+    assert store.write(_b64(PCAP_HEADER + b"\x00" * 3000))["complete"] is True
+
+
+def test_total_quota_is_configurable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from wireshark_mcp.uploads import MAX_UPLOAD_TOTAL_BYTES_ENV
+
+    monkeypatch.setenv(UPLOAD_DIR_ENV, str(tmp_path / "uploads"))
+    monkeypatch.setenv(MAX_UPLOAD_TOTAL_BYTES_ENV, "65536")
+
+    assert create_upload_store(None).max_total_bytes == 65536
+
+
+def test_upload_tool_does_not_block_the_event_loop(upload_mcp: WiresharkMCP, store: UploadStore) -> None:
+    """Store I/O runs on a worker thread, so the loop keeps serving other work."""
+    import threading
+
+    loop_thread: list[int] = []
+    write_thread: list[int] = []
+    original = store.write
+
+    def recording_write(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        write_thread.append(threading.get_ident())
+        return original(*args, **kwargs)
+
+    store.write = recording_write  # type: ignore[method-assign]
+
+    async def run() -> None:
+        loop_thread.append(threading.get_ident())
+        await call_tool_text(upload_mcp, "wireshark_upload_capture", {"content_base64": _b64(PCAP_HEADER)})
+
+    _run(run())
+
+    assert write_thread and write_thread[0] != loop_thread[0]

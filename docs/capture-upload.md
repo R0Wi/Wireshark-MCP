@@ -49,6 +49,7 @@ just opted into.
 | `WIRESHARK_MCP_UPLOAD_DIR` | `<first allowed dir>/uploads` | Where uploads are stored. Unset **and** no allowed dirs means uploads are disabled. |
 | `WIRESHARK_MCP_MAX_UPLOAD_BYTES` | `104857600` (100 MiB) | Largest single capture, counted after base64 decoding. |
 | `WIRESHARK_MCP_UPLOAD_TTL` | `3600` (1 hour) | How long an upload survives before it is swept. |
+| `WIRESHARK_MCP_MAX_UPLOAD_TOTAL_BYTES` | `1073741824` (1 GiB) | Combined size of all live uploads, partial ones included. |
 
 Expiry is swept lazily, at the start of each upload operation. There is no
 background task, so an idle server does nothing and a container has no timer to
@@ -95,10 +96,65 @@ context window. A few hundred KB is comfortable; tens of megabytes is not,
 whatever `WIRESHARK_MCP_MAX_UPLOAD_BYTES` allows. Chunking splits the cost over
 several calls but does not remove it.
 
-For a large capture, prefer trimming it at the source — `editcap -A/-B` for a
-time window, or a capture filter — over uploading everything and filtering
-server-side. A client driving the MCP session programmatically rather than
-through a model does not have this ceiling and can use the full 100 MiB.
+For a large capture, use the HTTP route below instead. Where that is not
+available, trim at the source — `editcap -A/-B` for a time window, or a capture
+filter — rather than uploading everything and filtering server-side.
+
+## Large captures over HTTP
+
+`POST /uploads` takes the capture as a raw request body and returns the same
+`upload://` handle, so the bytes never pass through a model. It is served
+alongside `/mcp` by the Streamable HTTP and SSE transports, and is subject to the
+same limits and checks as the upload tool.
+
+```sh
+curl --data-binary @incident.pcap \
+  -H 'Content-Type: application/octet-stream' \
+  'http://127.0.0.1:8080/uploads?filename=incident.pcap'
+```
+
+```json
+{"success": true, "data": {"handle": "upload://a121…", "size": 48211933, "format": "pcap", "complete": true, "expires_in_seconds": 3599}}
+```
+
+The body is streamed to disk in 1 MiB blocks on a worker thread, so a large
+upload does not hold the whole capture in memory or stall MCP requests running
+alongside it. A partial file is removed if the transfer fails for any reason,
+including the client disconnecting.
+
+| Condition | Status |
+|-----------|--------|
+| Stored and readable | 201 |
+| Empty body | 400 |
+| Uploads disabled | 403 |
+| Over `WIRESHARK_MCP_MAX_UPLOAD_BYTES` | 413 |
+| Not a pcap or pcapng | 415 |
+| `capinfos` cannot read it | 422 |
+| Over `WIRESHARK_MCP_MAX_UPLOAD_TOTAL_BYTES` | 507 |
+
+Every error body uses the tool envelope — `{"success": false, "error": {"type",
+"message"}}` — so a proxy can relay it unchanged. `Content-Length` is checked
+before the body is read; a chunked body is checked as it arrives.
+
+### Through an MCP gateway
+
+The route has no authentication of its own, like `/mcp`. Behind a gateway it is
+reached through the gateway's HTTP passthrough (see
+[R0Wi/mcp-gateway#16](https://github.com/R0Wi/mcp-gateway/issues/16)). A
+model-driven agent has no bearer token to send — its MCP client holds that — so
+the gateway mints a short-lived, single-use upload URL through an MCP tool call
+instead:
+
+```
+agent → gateway_create_upload_url(backend="wireshark", path="/uploads")
+      ← https://gw.example/backends/wireshark/t/<ticket>
+agent → curl --data-binary @incident.pcap "<url>?filename=incident.pcap"
+      ← 201 {"success": true, "data": {"handle": "upload://a121…", …}}
+agent → wireshark_aggregate(pcap_file="upload://a121…", …)
+```
+
+The gateway resolves `/uploads` against the backend's origin, not its `/mcp`
+path.
 
 ## Behind an MCP gateway
 
@@ -131,9 +187,9 @@ In practice that means:
   single server instance — run one per trust domain.
 - **Keep the TTL short.** It is the main bound on how long a leaked handle stays
   useful.
-- **Disk is a shared resource.** The size cap is per upload, not per directory.
-  A dedicated volume or tmpfs with its own quota keeps a busy session from
-  filling the host.
+- **Disk is a shared resource.** `WIRESHARK_MCP_MAX_UPLOAD_TOTAL_BYTES` bounds
+  all live uploads together, and a dedicated volume or tmpfs keeps that bound
+  independent of the host disk.
 
 ## What is checked
 
@@ -145,7 +201,9 @@ An upload is validated before it can be analyzed:
   that fails is deleted rather than left for the first analysis call to trip on.
   Skipped when `capinfos` is not installed.
 - **Size.** Enforced on each chunk against the running total, so a chunked
-  upload cannot exceed the cap by arriving in pieces.
+  upload cannot exceed the cap by arriving in pieces. The directory quota
+  counts partial uploads too, reserving space before it is written, so
+  concurrent transfers cannot jointly overshoot it.
 - **Filename.** Used only as a label; the stored path is derived from the
   handle, never from caller input.
 

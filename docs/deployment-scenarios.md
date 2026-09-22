@@ -92,6 +92,11 @@ Run one instance per trust domain rather than sharing one between tenants. See
 [Capture upload](capture-upload.md) for the full model, limits, and container
 example.
 
+For captures larger than a few hundred KB, send the bytes to `POST /uploads`
+instead of the base64 tool. Behind a gateway, that route is reached through its
+HTTP passthrough, with a short-lived upload URL the gateway mints for the agent —
+see [Large captures over HTTP](capture-upload.md#large-captures-over-http).
+
 ## WSL
 
 Install Wireshark CLI tools and `wireshark-mcp` inside the same distribution.
