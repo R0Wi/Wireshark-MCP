@@ -29,9 +29,14 @@ WRITE_TOOLS: frozenset[str] = frozenset(
         "wireshark_filter_save",
         "wireshark_merge_pcaps",
         "wireshark_text2pcap_import",
+        "wireshark_upload_capture",  # writes caller-supplied bytes into the upload sandbox
         "wireshark_yara_scan",  # exports objects to dest_dir before scanning
     }
 )
+
+# Tools that remove server-side state. Separate from WRITE_TOOLS because these
+# create nothing — but a client must still not auto-approve them.
+DESTRUCTIVE_TOOLS: frozenset[str] = frozenset({"wireshark_delete_upload"})
 
 # Parameters naming a filesystem destination. The guard test uses these to catch a
 # new writer that was never added above. `output_mode` is a format selector, not a
@@ -49,7 +54,7 @@ def annotations_for(tool_name: str) -> ToolAnnotations:
     ``False``: it would be redundant next to ``readOnlyHint`` and unset fields are
     dropped from the wire payload, which keeps the prompt prefix smaller.
     """
-    writes = tool_name in WRITE_TOOLS
+    writes = tool_name in WRITE_TOOLS or tool_name in DESTRUCTIVE_TOOLS
     return ToolAnnotations(
         read_only_hint=not writes,
         destructive_hint=True if writes else None,

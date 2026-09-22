@@ -5,9 +5,11 @@ import os
 import sys
 from collections.abc import Sequence
 from ipaddress import ip_address
+from pathlib import Path
 from typing import Literal, cast
 
 from . import __version__
+from .http_uploads import register_upload_routes
 from .mcp_app import WiresharkMCP
 from .profiles import DEFAULT_PROFILE, PROFILE_NAMES, excluded_tools, profile_description
 from .prompts import register_prompts
@@ -17,8 +19,10 @@ from .tools.agents import register_agent_tools
 from .tools.extract import register_extract_tools
 from .tools.registry import ToolRegistry, register_open_file_tool
 from .tools.stats import register_stats_tools
+from .tools.uploads import register_upload_tools
 from .tools.utility import register_utility_tools
 from .tshark.client import WiresharkSuiteClient
+from .uploads import create_upload_store
 
 logger = logging.getLogger("wireshark_mcp")
 LogLevelName = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -51,11 +55,29 @@ def _configure_windows_event_loop() -> None:
         asyncio.set_event_loop_policy(policy_cls())
 
 
+def _is_within(path: Path, parent: Path) -> bool:
+    """Whether `path` resolves inside `parent`. A parent that cannot be resolved is not a match."""
+    try:
+        path.resolve().relative_to(parent.expanduser().resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def _build_server(*, host: str, port: int, log_level: LogLevelName, profile: str = DEFAULT_PROFILE) -> WiresharkMCP:
     """Build and configure the MCP server with a stable tool surface."""
     # Read allowed directories from environment
     allowed_dirs_env = os.environ.get("WIRESHARK_MCP_ALLOWED_DIRS", "")
     allowed_dirs = [d.strip() for d in allowed_dirs_env.split(",") if d.strip()] or None
+
+    # Built before the client: it may create the upload directory, and an upload
+    # root outside the configured sandbox has to join `allowed_dirs` before the
+    # client validates that list, or resolved handles would fail the path check.
+    upload_store = create_upload_store(allowed_dirs)
+    if upload_store.enabled and allowed_dirs is not None:
+        upload_dir = str(upload_store.directory)
+        if not any(_is_within(upload_store.directory, Path(d)) for d in allowed_dirs):
+            allowed_dirs = [*allowed_dirs, upload_dir]
 
     mcp = WiresharkMCP(
         "Wireshark MCP",
@@ -64,6 +86,7 @@ def _build_server(*, host: str, port: int, log_level: LogLevelName, profile: str
         dependencies=["tshark"],
         log_level=log_level,
         excluded_tools=excluded_tools(profile),
+        upload_store=upload_store,
     )
     client = WiresharkSuiteClient(allowed_dirs=allowed_dirs)
 
@@ -73,6 +96,8 @@ def _build_server(*, host: str, port: int, log_level: LogLevelName, profile: str
     register_extract_tools(mcp, client)
     register_agent_tools(mcp, client)
     register_advanced_tools(mcp, client)
+    register_upload_tools(mcp, client, upload_store)
+    register_upload_routes(mcp, client, upload_store)
 
     # ── Analysis tools + protocol-aware recommendations ────────────────
     # Register the full analysis tool catalog once — the tool surface is static.

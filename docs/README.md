@@ -11,6 +11,7 @@ Start with the page that matches the task at hand.
 | Install automatically or diagnose an install | Run `wireshark-mcp install` and `wireshark-mcp doctor` from the main [README](../README.md) |
 | Configure an MCP client by hand | [Manual configuration](manual-configuration.md) |
 | Run locally, over SSH, in WSL, or in a container | [Deployment scenarios](deployment-scenarios.md) |
+| Analyze captures on a server that does not share your filesystem | [Capture upload](capture-upload.md) |
 | Migrate a 2.x deployment safely | [3.0 security migration](security-hardening-v3.md) |
 | Ask better packet-analysis questions | [Prompt examples](prompt-engineering.md) |
 | Compute capture-wide counts and distributions | [Aggregation guide](aggregation.md) |

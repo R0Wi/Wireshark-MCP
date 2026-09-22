@@ -79,11 +79,13 @@ wireshark-mcp install   # 从检测到的 MCP 客户端中选择并配置
 将发现写入 report.md。
 ```
 
+**没有共享文件系统？** 如果服务端运行在客户端看不到的位置，可以通过 MCP 上传抓包，而不是指定路径——`wireshark_upload_capture` 会返回 `upload://` 句柄，所有工具都能用它替代 `pcap_file`。参见 [docs/capture-upload_zh.md](docs/capture-upload_zh.md)。
+
 ---
 
 ## 工具
 
-52 个工具，每个都由真实 `tshark` 输出支撑，按类别组织：
+55 个工具，每个都由真实 `tshark` 输出支撑，按类别组织：
 
 | 类别 | 亮点 | 数量 |
 |------|------|:----:|
@@ -96,6 +98,7 @@ wireshark-mcp install   # 从检测到的 MCP 客户端中选择并配置
 | **解密与解析** | TLS/WPA 解密、解密校验、decode-as、协议偏好设置 | 5 |
 | **取证与富化** | TLS 指纹、文件特征扫描、GeoIP | 3 |
 | **文件操作、抓包与套件** | 实时抓包、接口列表、合并、过滤保存、editcap 裁剪/分割/去重/时移、帧提取、text2pcap、能力查询 | 11 |
+| **抓包上传** | 通过 MCP 上传抓包文件、列出与删除上传 | 3 |
 
 20 种协议由一个工具覆盖，而不是 20 个工具各覆盖一种：`wireshark_analyze_protocol` 接受 `protocol` 参数（`tls_handshakes`、`mqtt`、`modbus`、`s7comm`、`zigbee`、`wifi`、`rtp`、`kerberos` 等），并为其套用正确的字段与显示过滤器。字段名正是关键——`s7comm.param.item.dbnum` 不该由调用方去猜，而猜错时返回的空结果看起来和"干净的流量"没有区别。
 
@@ -109,9 +112,9 @@ wireshark-mcp install   # 从检测到的 MCP 客户端中选择并配置
 
 | Profile | 工具数 | 载荷 | 移除的内容 |
 |---------|:-----:|:----:|-----------|
-| `full`（默认） | 52 | ~22 KB | 无 |
-| `analysis` | 40 | ~17 KB | 实时抓包、接口列表、以及全部写文件的工具 |
-| `core` | 32 | ~14 KB | 以上全部，再加解密、解析覆写与底层视图 |
+| `full`（默认） | 55 | ~23 KB | 无 |
+| `analysis` | 43 | ~18 KB | 实时抓包、接口列表、以及全部写文件的工具 |
+| `core` | 35 | ~15 KB | 以上全部，再加解密、解析覆写与底层视图 |
 
 ```bash
 wireshark-mcp serve --profile core
@@ -125,9 +128,9 @@ wireshark-mcp serve --profile core
 export WIRESHARK_MCP_MAX_RESULT_CHARS=16000
 ```
 
-每个工具都声明了自己是只读还是写入，因此客户端可以自动放行 41 个只读分析工具，同时仍然对会创建文件的 11 个工具（实时抓包、合并、过滤保存、editcap、text2pcap、帧提取、对象导出）进行确认。
+每个工具都声明了自己是只读还是写入，因此客户端可以自动放行 42 个只读分析工具，同时仍然对会创建文件或删除服务端状态的 13 个工具（实时抓包、合并、过滤保存、editcap、text2pcap、帧提取、对象导出、抓包上传与删除）进行确认。
 
-3.0 中，这 11 个工具在 `WIRESHARK_MCP_ALLOWED_DIRS` 未指向现有目录时一律失败关闭。HTTP/SSE 默认也只能监听回环地址；只有放在可信、带认证的 TLS 反向代理后，才应显式传入 `--allow-insecure-http`。迁移说明见 [3.0 安全加固指南](docs/security-hardening-v3_zh.md)。
+3.0 中，创建文件的工具在 `WIRESHARK_MCP_ALLOWED_DIRS` 未指向现有目录时一律失败关闭，上传工具则在未配置上传目录时失败关闭。HTTP/SSE 默认也只能监听回环地址；只有放在可信、带认证的 TLS 反向代理后，才应显式传入 `--allow-insecure-http`。迁移说明见 [3.0 安全加固指南](docs/security-hardening-v3_zh.md)。
 
 ---
 
@@ -140,6 +143,7 @@ export WIRESHARK_MCP_MAX_RESULT_CHARS=16000
 | 平台配置（macOS/Linux/Windows） | [docs/platform-validation_zh.md](docs/platform-validation_zh.md) |
 | 手动客户端配置 | [docs/manual-configuration_zh.md](docs/manual-configuration_zh.md) |
 | 部署场景 | [docs/deployment-scenarios_zh.md](docs/deployment-scenarios_zh.md) |
+| 抓包上传（分布式服务端） | [docs/capture-upload_zh.md](docs/capture-upload_zh.md) |
 | 3.0 安全迁移 | [docs/security-hardening-v3_zh.md](docs/security-hardening-v3_zh.md) |
 | Prompt 模板 | [docs/prompt-engineering_zh.md](docs/prompt-engineering_zh.md) |
 | 架构说明 | [docs/architecture_zh.md](docs/architecture_zh.md) |

@@ -16,6 +16,8 @@ MCP client
 
 `src/wireshark_mcp/server.py` creates one server and one suite client, then registers tools, prompts, and resources. The public tool list is static during a session. `wireshark_open_file` inspects the protocol hierarchy and recommends already-registered tools; it does not mutate the catalog.
 
+`WiresharkMCP.call_tool` resolves any `upload://` handle in the arguments to its stored path before dispatch. That single choke point is why the whole tool surface accepts an uploaded capture without a signature change, and why a tool added later inherits the behavior. Output parameters are deliberately excluded from resolution, so a handle cannot be used to overwrite a stored upload.
+
 ## MCP SDK compatibility
 
 The server targets the stable Python SDK 2.x line (`mcp>=2.1.1,<3`) and subclasses `MCPServer`. HTTP bind settings are passed when the transport starts, as required by v2; the legacy `--mount-path` CLI option is translated into explicit SSE and message endpoint paths. Protocol models use snake_case Python attributes and camelCase aliases on the wire. An in-memory client test performs a complete v2 negotiation, checks the advertised server version, and lists the public tools through the protocol rather than through private managers.
@@ -25,10 +27,11 @@ The server targets the stable Python SDK 2.x line (`mcp>=2.1.1,<3`) and subclass
 | Area | Location | Responsibility |
 |------|----------|----------------|
 | Server and CLI | `server.py` | Commands, transports, profiles, registration order |
-| MCP behavior | `mcp_app.py` | Schema trimming, annotations, exclusions, result character ceiling |
+| MCP behavior | `mcp_app.py` | Schema trimming, annotations, exclusions, result character ceiling, `upload://` handle resolution |
 | Profiles | `profiles.py` | Literal tool exclusions for `full`, `analysis`, and `core` |
 | Tool annotations | `tool_annotations.py` | Read-only, destructive, and open-world hints |
 | Domain tools | `tools/` | Packet, protocol, statistics, security, file, and workflow semantics |
+| Capture uploads | `uploads.py`, `http_uploads.py` | Capability-addressed store for captures sent over MCP or `POST /uploads`, with a directory quota |
 | Suite client | `tshark/` | Path validation, subprocess execution, extraction, capture, statistics, cache |
 | Installer | `installer/` | Client detection, config generation, atomic config writes, diagnostics |
 | Prompts/resources | `prompts.py`, `resources.py` | Built-in workflows and field/filter references |
@@ -61,6 +64,7 @@ At the MCP boundary, long text is capped by `WIRESHARK_MCP_MAX_RESULT_CHARS` (de
 
 - Capture and output paths are validated by the suite client.
 - `WIRESHARK_MCP_ALLOWED_DIRS` restricts readable and writable paths to configured roots; writes fail closed when it is unset.
+- Capture uploads fail closed until an upload directory is configured. An `upload://` handle is a 128-bit random capability with a TTL, not a per-user grant: a spec-compliant MCP gateway forwards no caller identity upstream, so the server has no identity to scope it to. Run one instance per trust domain. See [Capture upload](capture-upload.md).
 - File-creating tools are explicitly marked destructive; clients may require approval.
 - Live capture is marked open-world and depends on host capture permissions.
 - Streamable HTTP and SSE do not add authentication. Non-loopback binds require `--allow-insecure-http` and a trusted authenticated TLS proxy.
